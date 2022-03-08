@@ -1,0 +1,29 @@
+# 此文件用于生成Fabric网络成员的身份证书
+OrdererOrgs: # orderer组织
+  - Name: Orderer # 排序节点组织的名字
+    Domain: example.com # 排序节点组织的根域名，可以修改
+    EnableNodeOUs: true # 如果为true，就在msp下生成config.yaml文件
+    Specs: # 该组织下有3个orderer节点
+      - Hostname: orderer0
+      - Hostname: orderer1
+      - Hostname: orderer2
+    #Template:  # Template和specs可以交替使用
+    #  Count: 2
+
+PeerOrgs: # peer组织
+  - Name: Org1 # 组织的名字，可以指定
+    Domain: org1.example.com  # 组织的根域名，可以修改
+    EnableNodeOUs: true
+    Template: # 生成peer节点的个数
+      Count: 2 # 生成2套公私钥和证书，一套是peer0.org1.example.com的，还有一套是peer1.org1.example.com的
+    #Specs:
+    #  - Hostname: demo #同时生成一个指定的主机名
+    Users: # 创建的普通用户的个数
+      Count: 1 # 每个Template下面会有几个普通User（注意，Admin是Admin，不包含在这个计数中）
+  - Name: Org2
+    Domain: org2.example.com
+    EnableNodeOUs: true
+    Template: 
+      Count: 2
+    Users: 
+      Count: 1

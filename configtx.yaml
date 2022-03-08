@@ -1,0 +1,189 @@
+# 此文件用于生成创世块、通道和锚节点
+# 1. Organizations部分
+Organizations: # 固定的，不能修改
+    - &OrdererOrg # Orderer组织，可以自己起个名字
+        Name: OrdererOrg # 排序节点组织名称
+        ID: OrdererMSP # 排序节点组织唯一ID，一般涉及到ID都是***MSP
+        MSPDir: crypto-config/ordererOrganizations/example.com/msp # 组织证书位置
+        Policies: #策略
+            Readers:
+                Type: Signature
+                Rule: "OR('OrdererMSP.member')"
+            Writers:
+                Type: Signature
+                Rule: "OR('OrdererMSP.member')"
+            Admins:
+                Type: Signature
+                Rule: "OR('OrdererMSP.admin')"
+        # OrdererEndpoints中配置的是默认排序节点，我们提供的排序节点为orderer0、orderer1，所以需要改为orderer0.example.com
+        OrdererEndpoints:
+            - orderer0.example.com:7050
+
+    - &Org1 # Peer组织，可以自己起个名字
+        Name: Org1MSP # 第一个组织的名字
+        ID: Org1MSP # 第一个组织的ID
+        MSPDir: crypto-config/peerOrganizations/org1.example.com/msp # 第一个Peer组织的证书根地址
+        Policies: # Policies为用户权限策略
+            Readers:
+                Type: Signature
+                Rule: "OR('Org1MSP.admin', 'Org1MSP.peer', 'Org1MSP.client')"
+            Writers:
+                Type: Signature
+                Rule: "OR('Org1MSP.admin', 'Org1MSP.client')"
+            Admins:
+                Type: Signature
+                Rule: "OR('Org1MSP.admin')"
+            Endorsement:
+                Type: Signature
+                Rule: "OR('Org1MSP.peer')"
+        AnchorPeers: # AnchorPeers为各组织选举的锚节点地址，可以随意指定一个Peer节点作为锚节点
+            # Org1组织下锚节点访问地址，其中端口是指区块链网络中能访问的，而不是节点容器内部的，一般指容器映射到宿主机的端口
+            - Host: peer0.org1.example.com # 锚节点的域名，锚节点就是不同Peer组织之间用来通信的节点，锚节点只能有一个（每个组织中都有四类节点：Commit Peer（把数据写入区块链中）、Leader Peer（Leader Peer需要选举，只有该节点可以与Orderer节点通信）、Endorse Peer（模拟交易）、Anchor Peer（与其他锚节点通信））
+              Port: 7051 # 该端口固定，不能修改
+
+    - &Org2
+        Name: Org2MSP
+        ID: Org2MSP
+        MSPDir: crypto-config/peerOrganizations/org2.example.com/msp
+        Policies:
+            Readers:
+                Type: Signature
+                Rule: "OR('Org2MSP.admin', 'Org2MSP.peer', 'Org2MSP.client')"
+            Writers:
+                Type: Signature
+                Rule: "OR('Org2MSP.admin', 'Org2MSP.client')"
+            Admins:
+                Type: Signature
+                Rule: "OR('Org2MSP.admin')"
+            Endorsement:
+                Type: Signature
+                Rule: "OR('Org2MSP.peer')"
+        AnchorPeers:
+            - Host: peer0.org2.example.com
+              Port: 7051
+
+# 2. Capabilities部分
+Capabilities:
+    Channel: &ChannelCapabilities # channel的能力
+        V2_0: true # 全部设置为true
+    Orderer: &OrdererCapabilities # orderer的能力
+        V2_0: true
+    Application: &ApplicationCapabilities # Application的能力
+        V2_0: true
+
+# 3. Application部分
+Application: &ApplicationDefaults
+    Organizations:
+    Policies:
+        Readers:
+            Type: ImplicitMeta
+            Rule: "ANY Readers"
+        Writers:
+            Type: ImplicitMeta
+            Rule: "ANY Writers"
+        Admins:
+            Type: ImplicitMeta
+            Rule: "MAJORITY Admins"
+        LifecycleEndorsement:
+            Type: ImplicitMeta
+            Rule: "MAJORITY Endorsement"
+        Endorsement:
+            Type: ImplicitMeta
+            Rule: "MAJORITY Endorsement"
+    Capabilities:
+        <<: *ApplicationCapabilities
+
+# 4. Orderer部分
+# 修改orderer节点配置，采用ETCdraft模式，并配置三个节点信息
+Orderer: &OrdererDefaults
+    OrdererType: etcdraft # orderer采用的共识算法
+    # 定义etcdraft模式的节点信息，如果采用了tls，那么需要配置tlscert证书
+    EtcdRaft: #orderer节点数必须为2n+1
+        Consenters:
+            - Host: orderer0.example.com
+              Port: 7050
+              ClientTLSCert: crypto-config/ordererOrganizations/example.com/orderers/orderer0.example.com/tls/server.crt
+              ServerTLSCert: crypto-config/ordererOrganizations/example.com/orderers/orderer0.example.com/tls/server.crt
+            - Host: orderer1.example.com
+              Port: 8050
+              ClientTLSCert: crypto-config/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.crt
+              ServerTLSCert: crypto-config/ordererOrganizations/example.com/orderers/orderer1.example.com/tls/server.crt
+            - Host: orderer2.example.com
+              Port: 7050
+              ClientTLSCert: crypto-config/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/server.crt
+              ServerTLSCert: crypto-config/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/server.crt
+    Addresses: # orderer 集群节点
+        - orderer0.example.com:7050
+        - orderer1.example.com:8050
+        - orderer2.example.com:7050
+    BatchTimeout: 2s # 多长时间产生一个区块
+    BatchSize: # 满足以下三个条件中的一个，则会产生新区块
+        MaxMessageCount: 10 # 交易的最大数据量，数量达到后会产生一个区块
+        AbsoluteMaxBytes: 99 MB # 数据大小达到99MB后，会产生一个区块
+        PreferredMaxBytes: 512 KB
+    Organizations:
+    Policies:
+        Readers:
+            Type: ImplicitMeta
+            Rule: "ANY Readers"
+        Writers:
+            Type: ImplicitMeta
+            Rule: "ANY Writers"
+        Admins:
+            Type: ImplicitMeta
+            Rule: "MAJORITY Admins"
+        BlockValidation:
+            Type: ImplicitMeta
+            Rule: "ANY Writers"
+
+# 5. Channel部分
+Channel: &ChannelDefaults
+    Policies:
+        # Who may invoke the 'Deliver' API
+        Readers:
+            Type: ImplicitMeta
+            Rule: "ANY Readers"
+        # Who may invoke the 'Broadcast' API
+        Writers:
+            Type: ImplicitMeta
+            Rule: "ANY Writers"
+        # By default, who may modify elements at this config level
+        Admins:
+            Type: ImplicitMeta
+            Rule: "MAJORITY Admins"
+    Capabilities:
+        <<: *ChannelCapabilities
+
+# 修改生成创世区块配置的配置信息，主要修改组织结构信息
+# 6. Profiles部分
+Profiles: # 名字不能改
+    # 创世块配置信息，需要指明有哪些组织，orderer节点有哪些，peer节点有哪些
+    OrgsOrdererGenesis: # 创世块的名字，随便改
+        <<: *ChannelDefaults
+        Capabilities:
+            <<: *ChannelCapabilities
+        Orderer:
+            <<: *OrdererDefaults
+            Organizations:
+            - *OrdererOrg
+            Capabilities:
+                <<: *OrdererCapabilities
+        Application:
+            <<: *ApplicationDefaults
+            Organizations:
+            - <<: *OrdererOrg
+        Consortiums:
+            SampleConsortium:
+                Organizations:
+                - *Org1
+                - *Org2
+    OrgsChannel: # 通道的名字，可以修改。
+        Consortium: SampleConsortium
+        <<: *ChannelDefaults
+        Application:
+            <<: *ApplicationDefaults
+            Organizations: # 配置通道信息，需要指明该通道有哪些组织
+                - *Org1
+                - *Org2
+            Capabilities:
+                <<: *ApplicationCapabilities

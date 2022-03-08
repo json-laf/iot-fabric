@@ -1,0 +1,215 @@
+version: '3' # docker-compose的版本
+
+volumes: # 本地卷映射到远程服务器上
+  orderer2.example.com:
+  peer0.org2.example.com:
+  peer1.org2.example.com:
+
+networks:
+  network:
+
+services:
+  orderer2.example.com: # 服务名
+    container_name: orderer2.example.com # 启动容器的名字
+    image: hyperledger/fabric-orderer:arm64-2.3 #启动的镜像
+    environment:
+      - FABRIC_LOGGING_SPEC=DEBUG # 日志级别
+      - ORDERER_GENERAL_LISTENADDRESS=0.0.0.0 # orderer节点监听的地址，0.0.0.0会自动替换为实际的IP地址
+      - ORDERER_GENERAL_BOOTSTRAPMETHOD=file # 创世区块的来源方式，一般为file即可
+      - ORDERER_GENERAL_BOOTSTRAPFILE=/var/hyperledger/orderer/orderer.genesis.block # 存储创世区块文件的路径
+      - ORDERER_GENERAL_LOCALMSPID=OrdererMSP # orderer节点所属的组织的ID，在configtxgen模块配置文件中指定的
+      - ORDERER_GENERAL_LOCALMSPDIR=/var/hyperledger/orderer/msp # orderer节点msp文件路径
+      # enabled TLS
+      - ORDERER_GENERAL_TLS_ENABLED=true # 通信时是否使用TLS加密
+      - ORDERER_GENERAL_TLS_PRIVATEKEY=/var/hyperledger/orderer/tls/server.key # 私钥
+      - ORDERER_GENERAL_TLS_CERTIFICATE=/var/hyperledger/orderer/tls/server.crt # 证书
+      - ORDERER_GENERAL_TLS_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt] # 根证书
+      - ORDERER_GENERAL_CLUSTER_CLIENTCERTIFICATE=/var/hyperledger/orderer/tls/server.crt
+      - ORDERER_GENERAL_CLUSTER_CLIENTPRIVATEKEY=/var/hyperledger/orderer/tls/server.key
+      - ORDERER_GENERAL_CLUSTER_ROOTCAS=[/var/hyperledger/orderer/tls/ca.crt]
+    working_dir: /opt/gopath/src/github.com/hyperledger/fabric
+    command: orderer
+    volumes:
+        - ./channel-artifacts/genesis.block:/var/hyperledger/orderer/orderer.genesis.block
+        - ./crypto-config/ordererOrganizations/example.com/orderers/orderer2.example.com/msp:/var/hyperledger/orderer/msp
+        - ./crypto-config/ordererOrganizations/example.com/orderers/orderer2.example.com/tls/:/var/hyperledger/orderer/tls
+    ports:
+      - 7050:7050 # 本地的端口：容器的端口
+    networks:
+      - network
+    extra_hosts:
+      - "orderer0.example.com:192.168.1.112"
+      - "orderer1.example.com:192.168.1.112"
+      - "orderer2.example.com:192.168.1.110"
+
+  peer0.org2.example.com:
+    container_name: peer0.org2.example.com
+    image: hyperledger/fabric-peer:arm64-2.3
+    environment:
+      - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock # docker服务器的Deamon地址，默认取端口的套接字
+      # - CORE_VM_DOCKER_HOSTCONFIG_NETWORKMODE=network_default # 当前节点属于哪个网络
+      - FABRIC_LOGGING_SPEC=INFO # 日志等级
+      - CORE_PEER_TLS_ENABLED=true # 是否启用tls服务
+      - CORE_PEER_GOSSIP_USELEADERELECTION=true # 是否自动选举Leader Peer
+      - CORE_PEER_GOSSIP_ORGLEADER=false # 当前节点是不是Leader Peer，如果为true则指定该节点为Leader Peer
+      - CORE_PEER_PROFILE_ENABLED=true # 在Peer节点中有一个Profile服务，是否启动该服务
+      - CORE_PEER_TLS_CERT_FILE=/etc/hyperledger/fabric/tls/server.crt
+      - CORE_PEER_TLS_KEY_FILE=/etc/hyperledger/fabric/tls/server.key
+      - CORE_PEER_TLS_ROOTCERT_FILE=/etc/hyperledger/fabric/tls/ca.crt
+      - CORE_PEER_ID=peer0.org2.example.com # 当前Peer节点的名字，可以自己取名
+      - CORE_PEER_ADDRESS=peer0.org2.example.com:7051 # 当前Peer节点的地址信息
+      - CORE_PEER_LISTENADDRESS=0.0.0.0:7051 # 
+      - CORE_PEER_CHAINCODEADDRESS=peer0.org2.example.com:7052
+      - CORE_PEER_CHAINCODELISTENADDRESS=0.0.0.0:7052
+      - CORE_PEER_GOSSIP_BOOTSTRAP=peer0.org2.example.com:7051 # 启动节点后向哪些节点发起gossip连接，以加入网络，一般写自己
+      - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer0.org2.example.com:7051 # 节点被组织外节点感知的地址，为了被其他节点感知到，如果不设置则别的节点无法感知到该节点
+      - CORE_PEER_LOCALMSPID=Org2MSP # 所属的组织ID
+      - CORE_CHAINCODE_EXECUTETIMEOUT=300s # Allow more time for chaincode container to build on install.
+      # 使用CouchDB
+      # - CORE_LEDGER_STATE_STATEDATABASE=CouchDB
+      # - CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb0:5984
+      # - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=
+      # - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=
+    # depends_on:
+    #   - couchdb0
+    working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer
+    command: peer node start
+    volumes:
+       - /var/run/:/host/var/run/
+       - ./crypto-config/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/msp:/etc/hyperledger/fabric/msp
+       - ./crypto-config/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls:/etc/hyperledger/fabric/tls
+    ports:
+      - 7051:7051
+      - 7052:7052
+      - 7053:7053
+    networks:
+      - network
+    extra_hosts:
+      - "orderer0.example.com:192.168.1.112"
+      - "orderer1.example.com:192.168.1.112"
+      - "orderer2.example.com:192.168.1.110"
+  # couchdb1:
+  #   container_name: couchdb1
+  #   image: hyperledger/fabric-couchdb
+  #   environment:
+  #     - COUCHDB_USER=
+  #     - COUCHDB_PASSWORD=
+  #   ports:
+  #     - "7984:5984"
+  #   networks:
+  #     - network
+
+  peer1.org2.example.com:
+    container_name: peer1.org2.example.com
+    image: hyperledger/fabric-peer:arm64-2.3
+    environment:
+      - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
+      - CORE_PEER_ID=peer1.org2.example.com
+      - CORE_PEER_ADDRESS=peer1.org2.example.com:8051
+      - CORE_PEER_LISTENADDRESS=0.0.0.0:8051
+      - CORE_PEER_CHAINCODEADDRESS=peer1.org2.example.com:8052
+      - CORE_PEER_CHAINCODELISTENADDRESS=0.0.0.0:8052
+      - CORE_PEER_GOSSIP_BOOTSTRAP=peer1.org2.example.com:8051
+      - CORE_PEER_GOSSIP_EXTERNALENDPOINT=peer1.org2.example.com:8051
+      - CORE_PEER_LOCALMSPID=Org2MSP
+      - FABRIC_LOGGING_SPEC=INFO
+      - CORE_PEER_TLS_ENABLED=true
+      - CORE_PEER_GOSSIP_USELEADERELECTION=true
+      - CORE_PEER_GOSSIP_ORGLEADER=false
+      - CORE_PEER_PROFILE_ENABLED=true
+      - CORE_PEER_TLS_CERT_FILE=/etc/hyperledger/fabric/tls/server.crt
+      - CORE_PEER_TLS_KEY_FILE=/etc/hyperledger/fabric/tls/server.key
+      - CORE_PEER_TLS_ROOTCERT_FILE=/etc/hyperledger/fabric/tls/ca.crt
+      - CORE_CHAINCODE_EXECUTETIMEOUT=300s
+    #   - CORE_LEDGER_STATE_STATEDATABASE=CouchDB
+    #   - CORE_LEDGER_STATE_COUCHDBCONFIG_COUCHDBADDRESS=couchdb1:5984
+    #   - CORE_LEDGER_STATE_COUCHDBCONFIG_USERNAME=
+    #   - CORE_LEDGER_STATE_COUCHDBCONFIG_PASSWORD=
+    # depends_on:
+    #   - couchdb1
+    working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer
+    command: peer node start
+    volumes:
+       - /var/run/:/host/var/run/
+       - ./crypto-config/peerOrganizations/org2.example.com/peers/peer1.org2.example.com/msp:/etc/hyperledger/fabric/msp
+       - ./crypto-config/peerOrganizations/org2.example.com/peers/peer1.org2.example.com/tls:/etc/hyperledger/fabric/tls
+    ports:
+      - 8051:8051
+      - 8052:8052
+      - 8053:8053
+    # networks:
+    #   - network
+    extra_hosts:
+      - "orderer0.example.com:192.168.1.112"
+      - "orderer1.example.com:192.168.1.112"
+      - "orderer2.example.com:192.168.1.110"
+
+  cli1: # 客户端角色的节点。以Linux终端作为客户端，还可以使用SDK作为客户端
+    container_name: cli1
+    image: hyperledger/fabric-tools:arm64-2.3
+    tty: true # 启用终端
+    stdin_open: true # 标准输入
+    environment: # 客户端的环境变量
+      - GOPATH=/opt/gopath # docker容器启动后，docker容器中go的工作目录，不需要改
+      - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock # docker容器启动后，对应的守护进程的本地套接字，不需要改
+      #- FABRIC_LOGGING_SPEC=DEBUG
+      - FABRIC_LOGGING_SPEC=INFO # 日志的级别，分为CRITICAL、ERROR、WARNING、NOTICE、INFO、DEBUG五种内容由少变多的级别
+      - CORE_PEER_ID=cli1 # 当前客户端节点的ID，自己指定
+      - CORE_PEER_ADDRESS=peer0.org2.example.com:7051 # 客户端要连接的节点，端口不要改
+      - CORE_PEER_LOCALMSPID=Org2MSP # 客户端连接的组织ID，和Peer节点所属的组织一致
+      - CORE_PEER_TLS_ENABLED=true # 连接Peer节点时，是否需要加密，如果为true则需要设置下面三个tls证书的文件
+      - CORE_PEER_TLS_CERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/server.crt # 证书文件
+      - CORE_PEER_TLS_KEY_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/server.key # 私钥文件
+      - CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt # 根证书文件
+      - CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/users/Admin@org2.example.com/msp # 指定当前客户端的身份为Admin，该身份有创建通道、安装链码、更新锚节点等权限
+    working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer # 进入容器后的工作目录
+    command: /bin/bash # 使用docker-compose启动该镜像后执行的命令
+    volumes: # 卷的挂载
+        - /var/run/:/host/var/run/ # 主机的文件夹：容器中的文件夹
+        - ./chaincode/go/:/opt/gopath/src/github.com/hyperledger/chaincode/go
+        - ./crypto-config:/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/
+        - ./channel-artifacts:/opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts
+    extra_hosts:
+      - "orderer0.example.com:192.168.1.112"
+      - "orderer1.example.com:192.168.1.112"
+      - "orderer2.example.com:192.168.1.110"
+      - "peer0.org1.example.com:192.168.1.112"
+      - "peer1.org1.example.com:192.168.1.112"
+      - "peer0.org2.example.com:192.168.1.110"
+      - "peer1.org2.example.com:192.168.1.110"
+    networks:
+      - network
+  
+  cli2:
+    container_name: cli2
+    image: hyperledger/fabric-tools:arm64-2.3
+    tty: true
+    stdin_open: true
+    environment:
+      - GOPATH=/opt/gopath
+      - CORE_VM_ENDPOINT=unix:///host/var/run/docker.sock
+      #- FABRIC_LOGGING_SPEC=DEBUG
+      - FABRIC_LOGGING_SPEC=INFO
+      - CORE_PEER_ID=cli2
+      - CORE_PEER_ADDRESS=peer1.org2.example.com:8051
+      - CORE_PEER_LOCALMSPID=Org2MSP
+      - CORE_PEER_TLS_ENABLED=true
+      - CORE_PEER_TLS_CERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/peers/peer1.org2.example.com/tls/server.crt
+      - CORE_PEER_TLS_KEY_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/peers/peer1.org2.example.com/tls/server.key
+      - CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/peers/peer1.org2.example.com/tls/ca.crt
+      - CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/users/Admin@org2.example.com/msp
+    working_dir: /opt/gopath/src/github.com/hyperledger/fabric/peer
+    command: /bin/bash
+    volumes:
+        - /var/run/:/host/var/run/
+        - ./chaincode/go/:/opt/gopath/src/github.com/hyperledger/multiple-deployment/chaincode/go
+        - ./crypto-config:/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/
+        - ./channel-artifacts:/opt/gopath/src/github.com/hyperledger/fabric/peer/channel-artifacts
+    extra_hosts:
+      - "orderer0.example.com:192.168.1.112"
+      - "orderer1.example.com:192.168.1.112"
+      - "orderer2.example.com:192.168.1.110"
+      - "peer0.org1.example.com:192.168.1.112"
+      - "peer1.org1.example.com:192.168.1.112"
+      - "peer0.org2.example.com:192.168.1.110"
+      - "peer1.org2.example.com:192.168.1.110"
